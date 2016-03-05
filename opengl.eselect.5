@@ -1,0 +1,68 @@
+.\" -*- coding: utf-8 -*-
+.\" Copyright 2005-2016 Gentoo Foundation
+.\" Distributed under the terms of the GNU GPL version 2 or later
+.\"
+.TH opengl.eselect 5 "March 2016" "Gentoo Linux" eselect
+.SH NAME
+opengl.eselect \- Gentoo management module for switching OpenGL interface vendors.
+.SH SYNOPSIS
+.B eselect opengl
+.RB [ help | usage | version ]
+.br
+.B eselect opengl list
+.br
+.B eselect opengl reset \fR[\fB\-\-prefix\=\fI\,PATH\/\fR]
+.br
+.BR "eselect opengl set " \fI\,TARGET\/ \fR " [" \-\-use\-old | \-\-prefix\=\fI\,PATH\/\fR | \-\-ignore\-error ]
+.br
+.B eselect opengl show
+.SH DESCRIPTION
+.B eselect opengl
+\- is the Gentoo management module for switching OpenGL interface vendors.
+.PP
+This implementation uses symbolic links, created in the system \fI\,${PREFIX}/lib{32,64}\/ \fR
+directories. These symbolic links (when present) are used to set the current OpenGL vendor.
+.br
+Dynamic linker (override) paths, set in the OS environment, are \fI\,not\/\fR used.
+.SH ACTION: LIST
+.B eselect opengl list
+.br
+Display a list of all currently available OpenGL vendors.
+The currently selected (global) OpenGL vendor is marked with a
+.BR * .
+.SH ACTION: RESET
+.B eselect opengl reset \fR[\fB\-\-prefix\=\fI\,PATH\/\fR]
+.br
+Purges all symbolic links in the 
+.I "${PREFIX}/lib{32,64}"
+directories. The action also removes the currently selected OpenGL vendor from the OS environment.
+.TP
+\fB \-\-prefix\fR=\fI\,PATH\/\fR
+The parameter \fI\,PATH\/\fR specifies a different value for \fI\,${PREFIX}\/\fR path. This variable defaults to \fI\,${EROOT}/usr\/\fR .
+.PP
+The
+.B reset
+action should be used prior to a re-installation of the stock Gentoo
+.I opengl.eselect
+module.
+.SH ACTION: SET
+.BR "eselect opengl set " \fI\,TARGET\/ \fR " [" \-\-use\-old | \-\-prefix\=\fI\,PATH\/\fR | \-\-ignore\-error ]
+.br
+Selects \fI\,TARGET\/ \fR OpenGL vendor. Creates symbolic links in \fI\,${PREFIX}/lib{32,64}\/ \fR directories. Also sets the newly selected OpenGL vendor in the OS environment.
+.TP
+\fB \-\-use\-old\fR
+Use this option to reload the existing OpenGL vendor (if one is currently set).
+.TP
+\fB \-\-prefix\fR=\fI\,PATH\/\fR
+The parameter \fI\,PATH\/\fR specifies a different value for \fI\,${PREFIX}\/\fR path. This variable defaults to \fI\,${EROOT}/usr\/\fR .
+.TP
+\fB \-\-ignore\-error\fR
+Disables sanity checks which are run on the main library directories. These are used to determine if the currently selected OpenGL implementation is correctly configured.
+.SH ACTION: SHOW
+.B eselect opengl show
+.br
+Output the currently select OpenGL vendor, or \fI\,(none)\/\fR if no OpenGL vendor is currrently set.
+.SH AUTHOR
+Robert Walker <bob.mt.wya@gmail.com>
+.SH SEE ALSO
+.BR eselect (1)
