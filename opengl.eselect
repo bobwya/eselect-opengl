@@ -17,7 +17,7 @@ inherit multilib package-manager config
 DESCRIPTION="Manage the OpenGL implementation used by your system (unsupported version)"
 SVN_DATE='$Date$'
 VERSION=$(svn_date_to_version "${SVN_DATE}" )
-EBUILD_VERSION="1.3.2"
+EBUILD_VERSION="1.3.3"
 
 # Our data
 MAIN_ENV_FILE="${EROOT}/etc/env.d/03opengl"
@@ -114,7 +114,7 @@ write_xorg_confd() {
 	local dir
 	echo 'Section "Files"'
 	for dir; do
-		echo -e "\tModulePath \"${dir}\"\n"
+		echo -e "\tModulePath \"${dir}\""
 	done
 	echo 'EndSection'
 }
