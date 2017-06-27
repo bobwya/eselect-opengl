@@ -1,5 +1,5 @@
 # -*-eselect-*-  vim: ft=eselect
-# Copyright 1999-2016 Gentoo Foundation
+# Copyright 1999-2017 Gentoo Foundation
 # Distributed under the terms of the GNU General Public License v2
 #
 # Author:  Martin Schlemmer <azarah@gentoo.org>
@@ -10,14 +10,16 @@
 # Further modifications by Jeremy Huddleston <eradicator@gentoo.org>
 # Made into eselect module by Jeremy Huddleston <eradicator@gentoo.org>
 # Experimental/unofficial modifications made by Robert Walker <bob.mt.wya@gmail.com>
+# Add support for Primus setups by Steven Newbury <steve@snewbury.org.uk>
+
 
 inherit multilib package-manager config
 
 # Eselect data
+# shellcheck disable=SC2034
 DESCRIPTION="Manage the OpenGL implementation used by your system (unsupported version)"
-SVN_DATE='$Date$'
-VERSION=$(svn_date_to_version "${SVN_DATE}" )
-EBUILD_VERSION="1.3.3"
+# shellcheck disable=SC2034
+VERSION="1.3.4"
 
 # Our data
 MAIN_ENV_FILE="${EROOT}/etc/env.d/03opengl"
@@ -25,58 +27,53 @@ PRIMUS_DISPLAY_ENV_FILE="${EROOT}/etc/env.d/03primus-display"
 PRIMUS_RENDER_ENV_FILE="${EROOT}/etc/env.d/03primus-render"
 XORGD_FILE="${EROOT}/etc/X11/xorg.conf.d/20-opengl.conf"
 PREFIX="${EROOT}/usr"
-DST_PREFIX="${EROOT}/usr"
-unset IGNORE_ERROR
-unset PRIMUS_DISPLAY
-unset PRIMUS_RENDER
+unset -v IGNORE_ERROR PRIMUS_DISPLAY PRIMUS_RENDER
 
 
 # Search for symlinks to GL implementation (stdout)
 search_for_gl_implemention() {
 	local lib_dir="${PREFIX#${ROOT}}/${1}"
-	local gl_implementation_match
-	local lib_file
+	local gl_implementation_match gl_root gl_root_len lib_file target_dir
 
-	local gl_root="${lib_dir}/opengl/"
-	[ -d "${gl_root}" ] || return
+	gl_root="${lib_dir}/opengl/"
+	[[ -d "${gl_root}" ]] || return
 
-	local gl_root_len="${#gl_root}"
-	for lib_file in $( find "${lib_dir}" -maxdepth 1 ! -type d -type l -regextype posix-extended -regex ".*lib(EGL.*|GL.*|OpenGL)\.(la|a|so.*).*" 2>/dev/null ) ; do
-		local target_dir="$(dirname $( readlink -qf ${lib_file} ) )"
+	gl_root_len="${#gl_root}"
+	while IFS= read -r -d '' lib_file; do
+		target_dir="$(dirname "$( readlink -qf "${lib_file}" )" )"
 		[[ "${target_dir:0:${gl_root_len}}" != "${gl_root}" ]] && continue
 		
 		target_dir="${target_dir:${gl_root_len}}"
 		gl_implementation="${target_dir%/lib}"
 		if [[ -z "${gl_implementation_match}" ]]; then
 			gl_implementation_match="${gl_implementation}"
-		elif [[ "${gl_implementation_match}" != "${gl_implementation}" && -z ${IGNORE_ERROR} ]]; then
+		elif [[ "${gl_implementation_match}" != "${gl_implementation}" && -z "${IGNORE_ERROR}" ]]; then
 			die -q "Invalid symbolic links: OpenGL implementations \"${gl_implementation_match}\" & \"${gl_implementation}\" are selected simultaneously."
 			return 1
 		fi
-	done
+	done < <(find "${lib_dir}" -maxdepth 1 ! -type d -type l -regextype posix-extended -regex ".*lib(EGL.*|GL.*|OpenGL)\.(la|a|so.*).*" -printf '%p\0' 2>/dev/null)
 	echo "${gl_implementation_match}"
 	return 0
 }
 
 # List existing GL implementation (stdout)
 get_current_implementation() {
-	local gl_implementation_match
-	local gl_implementation
-	local opengl_profile=$(load_config "${MAIN_ENV_FILE}" OPENGL_PROFILE)
-	local lib_dir
+	local gl_implementation gl_implementation_match lib_dir opengl_profile
+
+	opengl_profile=$(load_config "${MAIN_ENV_FILE}" OPENGL_PROFILE)
 
 	# Read GL implementation directly and ...
-	[[ -n ${opengl_profile} ]] && gl_implementation="${opengl_profile}"
+	[[ -n "${opengl_profile}" ]] && gl_implementation="${opengl_profile}"
 
 	# ... iterate over main lib directories (/usr/lib{32,64}/)
 	# to search for symbolic links to GL implementation
 	if [[ -z "${gl_implementation}" || -z "${IGNORE_ERROR}" ]]; then
 		for lib_dir in $(list_libdirs); do
-			[[ ${ROOT} != / ]] && lib_dir=${lib_dir#${EROOT}}
+			[[ "${ROOT}" != "/" ]] && lib_dir="${lib_dir#${EROOT}}"
 
 			# Make sure we have a valid /usr/lib{32,64}/opengl/lib directory
 			# Make sure lib directory is not a symlink (e.g. /usr/lib -> /usr/lib64)
-			[[ -d ${PREFIX}/${lib_dir}/opengl && ! -h ${PREFIX}/${lib_dir} ]] || continue
+			[[ -d "${PREFIX}/${lib_dir}/opengl" && ! -h "${PREFIX}/${lib_dir}" ]] || continue
 
 			gl_implementation_match=$(search_for_gl_implemention "${lib_dir}")
 		done
@@ -96,16 +93,14 @@ get_current_implementation() {
 # List all existing GL implementations (stdout)
 get_implementations() {
 	local -a gl_implementations
-	local lib_dir
-	local dir
-	local dir_name
+	local dir dir_name lib_dir
 
-	for lib_dir in $(list_libdirs) ; do
-		[[ ${ROOT} != / ]] && lib_dir=${lib_dir#${EROOT}}
-		for dir in "${PREFIX}/${lib_dir}"/opengl/* ; do
+	for lib_dir in $(list_libdirs); do
+		[[ "${ROOT}" != "/" ]] && lib_dir="${lib_dir#${EROOT}}"
+		for dir in "${PREFIX}/${lib_dir}"/opengl/*; do
 			dir_name=$(basename "${dir}")
-			[[ -d ${dir} && ${dir_name} != "global" ]] || continue
-			has ${dir_name} "${gl_implementations[@]}" && continue
+			[[ -d "${dir}" && "${dir_name}" != "global" ]] || continue
+			has "${dir_name}" "${gl_implementations[@]}" && continue
 			gl_implementations+=( "${dir_name}" )
 		done
 	done
@@ -123,16 +118,16 @@ write_xorg_confd() {
 	echo 'EndSection'
 }
 
-# Remove env file: primus display implentation override; from /etc/env.d/
+# Remove env file: primus display implementation override; from /etc/env.d/
 remove_primus_display_conf_files() {
-	if [[ -f ${PRIMUS_DISPLAY_ENV_FILE} ]] ; then
+	if [[ -f "${PRIMUS_DISPLAY_ENV_FILE}" ]]; then
 		rm -f "${PRIMUS_DISPLAY_ENV_FILE}" || die -q "Failed to remove ${PRIMUS_DISPLAY_ENV_FILE}"
 	fi
 }
 
-# Remove env file: primus renderer implentation override; from /etc/env.d/
+# Remove env file: primus renderer implementation override; from /etc/env.d/
 remove_primus_render_conf_files() {
-	if [[ -f ${PRIMUS_RENDER_ENV_FILE} ]] ; then
+	if [[ -f "${PRIMUS_RENDER_ENV_FILE}" ]]; then
 		rm -f "${PRIMUS_RENDER_ENV_FILE}" || die -q "Failed to remove ${PRIMUS_RENDER_ENV_FILE}"
 	fi
 }
@@ -140,10 +135,10 @@ remove_primus_render_conf_files() {
 # Remove env file: linker paths override; from /etc/env.d/
 # Remove conf file: xorg module search paths override; from /etc/X11/xorg.conf.d
 remove_gl_conf_files() {
-	if [[ -f ${MAIN_ENV_FILE} ]] ; then
+	if [[ -f "${MAIN_ENV_FILE}" ]]; then
 		rm -f "${MAIN_ENV_FILE}" || die -q "Failed to remove ${MAIN_ENV_FILE}"
 	fi
-	if [[ -f ${XORGD_FILE} ]] ; then
+	if [[ -f "${XORGD_FILE}" ]]; then
 		rm -f "${XORGD_FILE}" || die -q "Failed to remove ${XORGD_FILE}"
 	fi
 }
@@ -151,12 +146,12 @@ remove_gl_conf_files() {
 # Check if current GL implementation is valid (/usr/lib{32,64}/opengl/*/lib)
 # Function is only cursory e.g. does not check for multi-lib breakage
 check_current_implementation() {
-	local gl_implementation=${1}
+	local gl_implementation="${1}"
 	local found_libgl
 
 	for lib_dir in $(list_libdirs); do
-		[[ ${ROOT} != / ]] && lib_dir=${lib_dir#${EROOT}}
-		[[ -d ${PREFIX}/${lib_dir}/opengl && ! -h ${PREFIX}/${lib_dir} ]] || continue
+		[[ "${ROOT}" != "/" ]] && lib_dir=${lib_dir#${EROOT}}
+		[[ -d "${PREFIX}/${lib_dir}/opengl" && ! -h "${PREFIX}/${lib_dir}" ]] || continue
 
 		local gl_implementation_dir="${PREFIX}/${lib_dir}/opengl/${gl_implementation}"
 		if [[ -f "${gl_implementation_dir}/lib/libGL.so" || -f "${gl_implementation_dir}/.gles-only" ]]; then
@@ -165,7 +160,7 @@ check_current_implementation() {
 		fi
 	done
 
-	if [[ -n ${IGNORE_ERROR} && -z ${found_libgl} ]]; then
+	if [[ -n "${IGNORE_ERROR}" && -z "${found_libgl}" ]]; then
 		write_error_msg "The current OpenGL implementation: ${gl_implementation} ;"
 		write_error_msg "does not seem to supply either GL or GLES library support."
 		die -q "Selected OpenGL implementation \"${gl_implementation}\" is incomplete."
@@ -174,75 +169,76 @@ check_current_implementation() {
 
 # Clear up existing symlinks from /usr/lib{32,64}/lib{EGL*,GL*,OpenGL}.{la,a,so*} to /usr/lib{32,64}/opengl/*/lib/*
 cleanup_previous_lib_symlinks() {
-	local lib_dir="$1"
+	local lib_dir="${1}"
 	local lib_file
-	
+	local target_dir
+		
 	local gl_root="${PREFIX#${ROOT}}/${lib_dir}/opengl"
-	[ -d "${gl_root}" ] || return
+	[[ -d "${gl_root}" ]] || return
 
 	local gl_root_len="${#gl_root}"
-	for lib_file in $( find "${PREFIX#${ROOT}}/${lib_dir}" -maxdepth 1 ! -type d -type l -regextype posix-extended -regex ".*lib(EGL.*|GL.*|OpenGL)\.(la|a|so.*).*" 2>/dev/null ) ; do
-		local target_dir="$(dirname $( readlink -qf ${lib_file} ) )"
+	while IFS= read -r -d '' lib_file; do
+		target_dir="$(dirname "$( readlink -qf "${lib_file}" )" )"
 		if [[ "${target_dir:0:${gl_root_len}}" == "${gl_root}" ]]; then
 			rm -f "${lib_file}" || die -q "Unable to remove symbolic link \"${lib_file}\"."
 		fi
-	done
+	done < <(find "${PREFIX#${ROOT}}/${lib_dir}" -maxdepth 1 ! -type d -type l -regextype posix-extended -regex ".*lib(EGL.*|GL.*|OpenGL)\.(la|a|so.*).*" -printf '%p\0' 2>/dev/null)
 }
 
 # Create symlinks from /usr/lib/* to /usr/lib/opengl/*/lib/lib{EGL*,GL*,OpenGL}.{la,a,so*} 
 create_lib_symlinks() {
-	local lib_dir="$1"
-	local gl_implementation="$2"
+	local lib_dir="${1}" gl_implementation="$2"
 	local gl_implementation_dir="${PREFIX#${ROOT}}/${lib_dir}/opengl/${gl_implementation}/lib"
-	local lib_file_path
+	local lib_file_path lib_file target_lib
 
-	for lib_file_path in $( find "${gl_implementation_dir}" ! -type d -maxdepth 1 -regextype posix-extended -regex ".*lib(EGL.*|GL.*|OpenGL)\.(la|a|so.*).*" 2>/dev/null ) ; do
-		local target_lib=$(basename $( readlink -qf "${lib_file_path}" ) )
-		local lib_file=$(basename "${lib_file_path}")
+	while IFS= read -r -d '' lib_file_path; do
+		target_lib="$(basename "$( readlink -qf "${lib_file_path}" )" )"
+		lib_file="$(basename "${lib_file_path}")"
 		ln -sf "${gl_implementation_dir}/${target_lib}" "${PREFIX#${ROOT}}/${lib_dir}/${lib_file}"
-	done
+	done < <(find "${gl_implementation_dir}" -maxdepth 1 ! -type d -regextype posix-extended -regex ".*lib(EGL.*|GL.*|OpenGL)\.(la|a|so.*).*" -printf '%p\0' 2>/dev/null)
 }
 
 # Switch to a new GL implementation or reload existing GL implementation
 # Sets linker GL path(s) & add additional X11 xorg search paths - set mesa as linker fallback
 set_new_implementation() {
-	local gl_implementation=$1
-	local available_implementations=$(get_implementations)
-	local lib_dir
+	local gl_implementation="${1}"
+	local available_implementations lib_dir
 	local -a xorgmodpath
+
+	available_implementations=$(get_implementations)
 
 	# Set a sane umask... bug #83115
 	umask 022
 
-	if ! has ${gl_implementation} ${available_implementations}; then
+	# shellcheck disable=SC2086
+	if ! has "${gl_implementation}" ${available_implementations}; then
 		die -q "Invalid opengl implementation selected."
 	fi
 
-	check_current_implementation ${gl_implementation}
+	check_current_implementation "${gl_implementation}"
 
-	if [[ -n ${PRIMUS_DISPLAY} ]] ; then
-		echo -n "Switching to ${gl_implementation} Primus Display implentation..."
+	if [[ -n "${PRIMUS_DISPLAY}" ]]; then
+		echo -n "Switching to ${gl_implementation} Primus Display implementation..."
 		remove_primus_display_conf_files
-		store_config ${PRIMUS_DISPLAY_ENV_FILE} PRIMUS_libGLd /usr/\$LIB/opengl/"${gl_implementation}"/lib/libGL.so.1
-	elif [[ -n ${PRIMUS_RENDER} ]] ; then
-		echo -n "Switching to ${gl_implementation} Primus Renderer implentation..."
+		store_config "${PRIMUS_DISPLAY_ENV_FILE}" "PRIMUS_libGLd" "/usr/\$LIB/opengl/${gl_implementation}/lib/libGL.so.1"
+	elif [[ -n "${PRIMUS_RENDER}" ]]; then
+		echo -n "Switching to ${gl_implementation} Primus Renderer implementation..."
 		remove_primus_render_conf_files
-		store_config ${PRIMUS_RENDER_ENV_FILE} PRIMUS_libGLr /usr/\$LIB/opengl/"${gl_implementation}"/lib/libGL.so.1
+		store_config "${PRIMUS_RENDER_ENV_FILE}" "PRIMUS_libGLr" "/usr/\$LIB/opengl/${gl_implementation}/lib/libGL.so.1"
 	else
-
 		echo -n "Switching to ${gl_implementation} OpenGL interface..."
 		remove_gl_conf_files
 
 		# Iterate over main lib directories (/usr/lib{32,64}/)
 		for lib_dir in $(list_libdirs); do
-			[[ ${ROOT} != / ]] && lib_dir=${lib_dir#${EROOT}}
+			[[ "${ROOT}" != "/" ]] && lib_dir="${lib_dir#${EROOT}}"
 
 			# Make sure we have a valid /usr/lib{32,64}/opengl/lib directory
 			# Make sure lib directory is not a symlink (e.g. /usr/lib -> /usr/lib64)
-			[[ -d ${PREFIX}/${lib_dir}/opengl && ! -h ${PREFIX}/${lib_dir} ]] || continue
+			[[ -d "${PREFIX}/${lib_dir}/opengl" && ! -h "${PREFIX}/${lib_dir}" ]] || continue
 
 			# ... add additional X11 xorg global module & GL extension paths too ...
-			if [[ -d ${PREFIX}/${lib_dir}/xorg/${gl_implementation}/extensions ]]; then
+			if [[ -d "${PREFIX}/${lib_dir}/xorg/${gl_implementation}/extensions" ]]; then
 				xorgmodpath+=(
 					"${PREFIX#${ROOT}}/${lib_dir}/xorg/${gl_implementation}"
 				)
@@ -259,9 +255,9 @@ set_new_implementation() {
 			fi
 		done
 	
-		store_config ${MAIN_ENV_FILE} OPENGL_PROFILE "${gl_implementation}"
+		store_config "${MAIN_ENV_FILE}" "OPENGL_PROFILE" "${gl_implementation}"
 
-		mkdir -p $(dirname "${XORGD_FILE}") || die
+		mkdir -p "$(dirname "${XORGD_FILE}")" || die
 		write_xorg_confd "${xorgmodpath[@]}" >"${XORGD_FILE}"
 	fi
 
@@ -276,10 +272,11 @@ describe_show() {
 }
 
 do_show() {
-	local current=$(get_current_implementation)
-	
-	if [[ -n ${current} ]] ; then
-		echo ${current}
+	local current
+
+	current=$(get_current_implementation)
+	if [[ -n "${current}" ]]; then
+		echo "${current}"
 		return 0
 	else
 		echo "(none)"
@@ -293,13 +290,14 @@ describe_list() {
 }
 
 do_list() {
-	local targets=( $(get_implementations) )
-	local current_implementation=$(get_current_implementation)
+	local current_implementation targets
 
+	targets=( $(get_implementations) )
+	current_implementation=$(get_current_implementation)
 	write_list_start "Available OpenGL implementations:"
 	local i
 	for (( i = 0; i < ${#targets[@]}; i++ )); do
-		[[ ${targets[i]} == ${current_implementation} ]] || continue
+		[[ "${targets[i]}" == "${current_implementation}" ]] || continue
 		
 		targets[i]=$(highlight_marker "${targets[i]}")
 	done
@@ -322,15 +320,14 @@ describe_reset_options() {
 
 do_reset() {
 	local action="error"
-	local new
-	local opt
+	local new opt
 
-	while [[ ${#@} -gt 0 ]] ; do
-		opt=$1
+	while ((${#@}>0)); do
+		opt="${1}"
 		shift
 		case ${opt} in
 			--prefix=*)
-				PREFIX=${ROOT}${opt#*=}
+				PREFIX="${ROOT}${opt#*=}"
 				available=$(get_implementations)
 			;;
 			*)
@@ -341,11 +338,11 @@ do_reset() {
 
 	# Iterate over main lib directories (/usr/lib{32,64}/)
 	for lib_dir in $(list_libdirs); do
-		[[ ${ROOT} != / ]] && lib_dir=${lib_dir#${EROOT}}
+		[[ "${ROOT}" != "/" ]] && lib_dir="${lib_dir#${EROOT}}"
 
 		# Make sure we have a valid /usr/lib{32,64}/opengl/lib directory
 		# Make sure lib directory is not a symlink (e.g. /usr/lib -> /usr/lib64)
-		[[ -d ${PREFIX}/${lib_dir}/opengl && ! -h ${PREFIX}/${lib_dir} ]] || continue
+		[[ -d "${PREFIX}/${lib_dir}/opengl" && ! -h "${PREFIX}/${lib_dir}" ]] || continue
 	
 		cleanup_previous_lib_symlinks "${lib_dir}"
 	done
@@ -372,16 +369,15 @@ describe_set_options() {
 }
 
 do_set() {
-	local action="error"
-	local current=$(get_current_implementation)
-	local available=$(get_implementations)
-	local new
-	local opt
+	local action="error" available current new opt
 
-	while [[ ${#@} -gt 0 ]] ; do
-		opt=$1
+	current=$(get_current_implementation)
+	available=$(get_implementations)
+
+	while ((${#@}>0)); do
+		opt="${1}"
 		shift
-		case ${opt} in
+		case "${opt}" in
 			--primus-display)
 				PRIMUS_DISPLAY=true
 			;;
@@ -389,29 +385,30 @@ do_set() {
 				PRIMUS_RENDER=true
 			;;
 			--use-old)
-				if [[ -n ${current} ]] && has ${current} ${available}; then
+				# shellcheck disable=SC2086
+				if [[ -n "${current}" ]] && has "${current}" ${available}; then
 					action="old-implementation"
 				fi
 			;;
 			--prefix=*)
-				PREFIX=${ROOT}${opt#*=}
+				PREFIX="${ROOT}${opt#*=}"
 				available=$(get_implementations)
 			;;
 			--ignore-error)
 				IGNORE_ERROR=true
 			;;
 			*)
-				if [[ ${action} != "old-implementation" ]] ; then
+				if [[ "${action}" != "old-implementation" ]]; then
 					action="set-implementation"
 				fi
-
-				if is_number ${opt} ; then
+				# shellcheck disable=SC2086
+				if is_number "${opt}"; then
 					targets=( $(get_implementations) )
-					new=${targets[$(( ${opt} - 1 ))]}
-					if [[ -z ${new} ]] ; then
+					new=${targets[$((opt - 1))]}
+					if [[ -z "${new}" ]]; then
 						die -q "Unrecognized option: ${opt}"
 					fi
-				elif has ${opt} ${available}; then
+				elif has "${opt}" ${available}; then
 					new="${opt}"
 				else
 					die -q "Unrecognized option: ${opt}"
@@ -419,18 +416,18 @@ do_set() {
 			;;
 		esac
 	done
-	if [[ -n ${PRIMUS_DISPLAY} ]] && [[ -n ${PRIMUS_RENDER} ]] ; then
-		die -q "Please specify only one of Primus Display or Renderer"
+	if [[ -n "${PRIMUS_DISPLAY}" && -n "${PRIMUS_RENDER}" ]]; then
+		die -q "Please specify only one of Primus Display or Primus Renderer"
 	fi
 
 	case ${action} in
 		old-implementation)
-			set_new_implementation ${current}
+			set_new_implementation "${current}"
 			return $?
 		;;
 		set-implementation)
-			if [[ -n ${new} ]] ; then
-				set_new_implementation ${new}
+			if [[ -n "${new}" ]]; then
+				set_new_implementation "${new}"
 				return $?
 			else
 				die -q "Please specify an implementation to set"
