@@ -1,8 +1,8 @@
 .\" -*- coding: utf-8 -*-
-.\" Copyright 2005-2016 Gentoo Foundation
+.\" Copyright 2005-2017 Gentoo Foundation
 .\" Distributed under the terms of the GNU GPL version 2 or later
 .\"
-.TH opengl.eselect 5 "March 2016" "Gentoo Linux" eselect
+.TH opengl.eselect 5 "June 2017" "Gentoo Linux" eselect
 .SH NAME
 opengl.eselect \- Gentoo management module for switching OpenGL interface vendors.
 .SH SYNOPSIS
@@ -13,7 +13,7 @@ opengl.eselect \- Gentoo management module for switching OpenGL interface vendor
 .br
 .B eselect opengl reset \fR[\fB\-\-prefix\=\fI\,PATH\/\fR]
 .br
-.BR "eselect opengl set " \fI\,TARGET\/ \fR " [" \-\-use\-old | \-\-prefix\=\fI\,PATH\/\fR | \-\-ignore\-error ]
+.BR "eselect opengl set " \fI\,TARGET\/ \fR " [" \-\-primus\-display | \-\-primus\-renderer | \-\-use\-old | \-\-prefix\=\fI\,PATH\/\fR | \-\-ignore\-error ]
 .br
 .B eselect opengl show
 .SH DESCRIPTION
@@ -46,9 +46,15 @@ action should be used prior to a re-installation of the stock Gentoo
 .I opengl.eselect
 module.
 .SH ACTION: SET
-.BR "eselect opengl set " \fI\,TARGET\/ \fR " [" \-\-use\-old | \-\-prefix\=\fI\,PATH\/\fR | \-\-ignore\-error ]
+.BR "eselect opengl set " \fI\,TARGET\/ \fR " [" \-\-primus\-display | \-\-primus\-renderer | \-\-use\-old | \-\-prefix\=\fI\,PATH\/\fR | \-\-ignore\-error ]
 .br
 Selects \fI\,TARGET\/ \fR OpenGL vendor. Creates symbolic links in \fI\,${PREFIX}/lib{32,64}\/ \fR directories. Also sets the newly selected OpenGL vendor in the OS environment.
+.TP
+\fB \-\-primus\-display\fR
+Set profile for Primus display.
+.TP
+\fB \-\-primus\-renderer\fR
+Set profile for Primus renderer.
 .TP
 \fB \-\-use\-old\fR
 Use this option to reload the existing OpenGL vendor (if one is currently set).
