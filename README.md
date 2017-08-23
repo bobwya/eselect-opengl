@@ -1,7 +1,7 @@
-# opengl.eselect
-Gentoo management module for switching OpenGL interface vendors. This a forked version of the Gentoo opengl.eselect that currently supports switching between the Nvidia priorietary driver and the Mesa drivers.
+# eselect-opengl
+Gentoo management module for switching OpenGL interface vendors. This a forked version of the Gentoo opengl.eselect module that currently supports switching between the Nvidia priorietary driver and the Mesa drivers.
 
-ATI proprietary driver support is still to be added.
+ATI proprietary driver support could be added - but is currently not supported.
 
 This implementation of OpenGL switching relies on isolating all GL implementations in subdirectories of a main ```/usr/lib{32,64}/opengl``` GL library directory. This avoids issues potentially arrising from the fact that Mesa and Nvidia GL libraries will be dynamically linked to _simultaneously_ in a Gentoo-based system (when using the in-tree *=app-eselect/eselect-opengl-1.3.1* package).
 
